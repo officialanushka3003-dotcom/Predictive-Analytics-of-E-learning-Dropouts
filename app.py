@@ -8,72 +8,117 @@ import streamlit as st
 # ---------------- PAGE CONFIG ----------------
 st.set_page_config(
     page_title="E-Learning Dropout Prediction",
-    page_icon="📊",
+    page_icon="🎓",
     layout="wide"
 )
 
+# ---------------- FILE PATHS ----------------
 BASE_DIR = Path(__file__).resolve().parent
+MODEL_DIR = BASE_DIR / "saved_model"
 
-MODEL_PATH = BASE_DIR / "extra_trees_model.pkl"
-PREPROCESSOR_PATH = BASE_DIR / "preprocessor.pkl"
-INFO_PATH = BASE_DIR / "model_info.json"
+MODEL_PATH = MODEL_DIR / "extra_trees_model.pkl"
+PREPROCESSOR_PATH = MODEL_DIR / "preprocessor.pkl"
+INFO_PATH = MODEL_DIR / "model_info.json"
+
 
 # ---------------- LOAD MODEL ----------------
 @st.cache_resource
 def load_artifacts():
+    """Load the trained model, preprocessor and model information."""
+
     model = joblib.load(MODEL_PATH)
     preprocessor = joblib.load(PREPROCESSOR_PATH)
 
     info = {}
     if INFO_PATH.exists():
-        with open(INFO_PATH, "r", encoding="utf-8") as f:
-            info = json.load(f)
+        with INFO_PATH.open("r", encoding="utf-8") as file:
+            info = json.load(file)
 
     return model, preprocessor, info
 
 
+# ---------------- APP HEADER ----------------
 st.title("🎓 E-Learning Dropout Prediction")
+
 st.write(
     "A machine learning application for identifying "
     "students who may be at risk of dropping out."
 )
 
-if not MODEL_PATH.exists() or not PREPROCESSOR_PATH.exists():
+# ---------------- CHECK MODEL FILES ----------------
+missing_files = [
+    path.name
+    for path in [MODEL_PATH, PREPROCESSOR_PATH]
+    if not path.is_file()
+]
+
+if missing_files:
     st.error(
-        "Model files not found. Check that "
-        "extra_trees_model.pkl and preprocessor.pkl "
-        "are in the same folder as app.py."
+        "Required model files were not found in the "
+        "'saved_model' folder."
+    )
+
+    st.write("Missing files:")
+    for filename in missing_files:
+        st.write(f"- {filename}")
+
+    st.info(
+        "Ensure that the files are uploaded to GitHub "
+        "inside the saved_model folder and that Git LFS "
+        "has uploaded the actual model files."
     )
     st.stop()
 
+# ---------------- INITIALIZE MODEL ----------------
 try:
     model, preprocessor, info = load_artifacts()
+
 except Exception as e:
-    st.error(f"Could not load the model: {e}")
+    st.error("The model could not be loaded.")
+    st.code(str(e))
+    st.info(
+        "Check the Streamlit logs and verify that the "
+        "saved model files are valid and compatible "
+        "with the installed Python libraries."
+    )
     st.stop()
+
 
 # ---------------- SIDEBAR ----------------
 st.sidebar.title("Navigation")
 
 page = st.sidebar.radio(
     "Choose a page",
-    ["Dashboard", "Predict Dropout Risk", "About Project"]
+    [
+        "Dashboard",
+        "Predict Dropout Risk",
+        "About Project"
+    ]
 )
+
 
 # ---------------- DASHBOARD ----------------
 if page == "Dashboard":
+
     st.subheader("Project Dashboard")
 
     col1, col2, col3 = st.columns(3)
 
     col1.metric(
         "Dataset Size",
-        f'{info.get("dataset_rows", "N/A")}'
+        info.get("dataset_rows", "N/A")
+    )
+
+    accuracy = info.get("test_accuracy_percent", "N/A")
+    accuracy_display = (
+        f"{accuracy}%"
+        if accuracy != "N/A" and accuracy is not None
+        else "N/A"
     )
 
     col2.metric(
         "Reported Test Accuracy",
-        f'{info.get("test_accuracy_percent", "N/A")}%'
+        accuracy_display
     )
 
     col3.metric(
@@ -83,24 +128,27 @@ if page == "Dashboard":
 
     st.info(
         "The dataset used for model development is synthetic. "
-        "These figures describe the project dataset and "
-        "model evaluation, not a live student population."
+        "These figures describe the project dataset and model "
+        "evaluation, not a live student population."
     )
 
     st.subheader("Supported Risk Categories")
 
     a, b, c = st.columns(3)
+
     a.success("LOW RISK")
     b.warning("MEDIUM RISK")
     c.error("HIGH RISK")
 
     st.write(
-        "Use Predict Dropout Risk in the sidebar to "
-        "evaluate an individual student profile."
+        "Select 'Predict Dropout Risk' from the sidebar "
+        "to evaluate an individual student profile."
     )
+
 
 # ---------------- PREDICTION PAGE ----------------
 elif page == "Predict Dropout Risk":
+
     st.subheader("Student Activity Details")
 
     st.write(
@@ -113,6 +161,7 @@ elif page == "Predict Dropout Risk":
         col1, col2 = st.columns(2)
 
         with col1:
+
             course_category = st.selectbox(
                 "Course Category",
                 ["Programming", "Data Science", "Other"]
@@ -134,7 +183,9 @@ elif page == "Predict Dropout Risk":
 
             course_progress = st.slider(
                 "Course Progress (%)",
-                0, 100, 20
+                min_value=0,
+                max_value=100,
+                value=20
             )
 
             assignments_completed = st.number_input(
@@ -145,9 +196,12 @@ elif page == "Predict Dropout Risk":
             )
 
         with col2:
+
             quiz_average = st.slider(
                 "Average Quiz Score (%)",
-                0, 100, 45
+                min_value=0,
+                max_value=100,
+                value=45
             )
 
             forum_interactions = st.number_input(
@@ -159,7 +213,9 @@ elif page == "Predict Dropout Risk":
 
             video_watch = st.slider(
                 "Video Watch Percentage (%)",
-                0, 100, 25
+                min_value=0,
+                max_value=100,
+                value=25
             )
 
             device_type = st.selectbox(
@@ -173,13 +229,13 @@ elif page == "Predict Dropout Risk":
         )
 
     if submitted:
-        # Follow the feature engineering used in
-        # the notebook's custom student example.
+
         avg_minutes_per_login = round(
-            avg_session_minutes / login_frequency, 4
+            avg_session_minutes / login_frequency,
+            4
         )
 
-        # Feature names and order from the notebook
+        # Feature names must match the training pipeline.
         student = pd.DataFrame([{
             "course_category": course_category,
             "login_frequency_per_week": login_frequency,
@@ -194,18 +250,26 @@ elif page == "Predict Dropout Risk":
         }])
 
         try:
+
             processed_student = preprocessor.transform(student)
             prediction = model.predict(processed_student)[0]
+
+            risk = str(prediction).strip().lower()
 
             st.divider()
             st.subheader("Prediction Result")
 
-            if str(prediction).lower() == "high":
+            if risk == "high":
                 st.error(f"Predicted Risk: {prediction}")
-            elif str(prediction).lower() == "medium":
+
+            elif risk == "medium":
                 st.warning(f"Predicted Risk: {prediction}")
-            else:
+
+            elif risk == "low":
                 st.success(f"Predicted Risk: {prediction}")
+
+            else:
+                st.info(f"Predicted Category: {prediction}")
 
             st.caption(
                 "This is a model estimate, not a definitive "
@@ -213,6 +277,7 @@ elif page == "Predict Dropout Risk":
             )
 
             if hasattr(model, "predict_proba"):
+
                 probabilities = model.predict_proba(
                     processed_student
                 )[0]
@@ -222,14 +287,16 @@ elif page == "Predict Dropout Risk":
                 results = pd.DataFrame({
                     "Risk Category": model.classes_,
                     "Estimated Probability (%)": [
-                        round(float(p) * 100, 2)
-                        for p in probabilities
+                        round(float(probability) * 100, 2)
+                        for probability in probabilities
                     ]
                 })
 
                 st.bar_chart(
                     results.set_index("Risk Category")
+                    ["Estimated Probability (%)"]
                 )
+
                 st.dataframe(
                     results,
                     hide_index=True,
@@ -237,18 +304,27 @@ elif page == "Predict Dropout Risk":
                 )
 
             st.subheader("Submitted Student Details")
-            st.dataframe(student, hide_index=True,
-                         use_container_width=True)
 
-        except Exception as e:
-            st.error(f"Prediction failed: {e}")
-            st.write(
-                "Check the input categories and confirm that "
-                "the saved preprocessor matches the trained model."
+            st.dataframe(
+                student,
+                hide_index=True,
+                use_container_width=True
             )
 
-# ---------------- ABOUT PAGE ----------------
+        except Exception as e:
+
+            st.error(f"Prediction failed: {e}")
+
+            st.info(
+                "Verify that the input feature names, categories "
+                "and preprocessing steps match those used during "
+                "model training."
+            )
+
+
+# ---------------- ABOUT PROJECT ----------------
 elif page == "About Project":
+
     st.subheader("About the Project")
 
     st.write("""
@@ -259,8 +335,8 @@ elif page == "About Project":
 
     **Algorithm:** Extra Trees Classifier
 
-    **Preprocessing:** StandardScaler for numerical features
-    and OneHotEncoder for categorical features.
+    **Preprocessing:** The saved preprocessing pipeline is
+    used to transform student activity data.
 
     **Target:** dropout_risk
 
@@ -268,6 +344,7 @@ elif page == "About Project":
     """)
 
     st.warning(
-        "The model should be validated on representative real-world "
-        "data before being used for actual student interventions."
+        "The model should be validated on representative "
+        "real-world data before being used for actual "
+        "student interventions."
     )
