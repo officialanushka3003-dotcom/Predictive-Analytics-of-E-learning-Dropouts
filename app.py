@@ -127,9 +127,10 @@ if page == "Dashboard":
     )
 
     st.info(
-        "The dataset used for model development is synthetic. "
-        "These figures describe the project dataset and model "
-        "evaluation, not a live student population."
+        "The dataset used for model development is a hybrid dataset "
+        "combining real-world student data with added instances "
+        "showing student dropout risk. "
+        "These figures describe the project dataset and model evaluation."
     )
 
     st.subheader("Supported Risk Categories")
@@ -340,11 +341,5 @@ elif page == "About Project":
 
     **Target:** dropout_risk
 
-    **Dataset:** Synthetic academic demonstration dataset.
+    **Dataset:** Hybrid dataset.
     """)
-
-    st.warning(
-        "The model should be validated on representative "
-        "real-world data before being used for actual "
-        "student interventions."
-    )
